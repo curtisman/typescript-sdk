@@ -662,6 +662,14 @@ export const GetPromptRequestSchema = RequestSchema.extend({
 });
 
 /**
+ * Target audience for tool call contents.
+ * "assistant" - is the default, and the content is intented for LLM models
+ * "user" - content is intended for direct display to the user.
+ * "memory" - content is intended for storage in memory.
+ */
+export const TargetAudienceSchema = z.union([z.enum(["user", "assistant", "memory"]), z.string()]);
+
+/**
  * Text provided to or from an LLM.
  */
 export const TextContentSchema = z
@@ -671,6 +679,11 @@ export const TextContentSchema = z
      * The text content of the message.
      */
     text: z.string(),
+
+    /**
+     * The target audience this content is intended for.
+     */
+    target: z.optional(TargetAudienceSchema),
   })
   .passthrough();
 
@@ -688,6 +701,11 @@ export const ImageContentSchema = z
      * The MIME type of the image. Different providers may support different image types.
      */
     mimeType: z.string(),
+
+    /**
+     * The target audience this content is intended for.
+     */
+    target: z.optional(TargetAudienceSchema),
   })
   .passthrough();
 
@@ -705,6 +723,11 @@ export const AudioContentSchema = z
      * The MIME type of the audio. Different providers may support different audio types.
      */
     mimeType: z.string(),
+
+    /**
+     * The target audience this content is intended for.
+     */
+    target: z.optional(TargetAudienceSchema),
   })
   .passthrough();
 
@@ -715,6 +738,10 @@ export const EmbeddedResourceSchema = z
   .object({
     type: z.literal("resource"),
     resource: z.union([TextResourceContentsSchema, BlobResourceContentsSchema]),
+    /**
+     * The target audience this content is intended for.
+     */
+    target: z.optional(TargetAudienceSchema),
   })
   .passthrough();
 
@@ -834,6 +861,11 @@ export const ToolSchema = z
      * Optional additional tool information.
      */
     annotations: z.optional(ToolAnnotationsSchema),
+
+    /**
+     * An optional list of target audiences this tool supports.  (default: ["assistant"])
+     */
+    target: z.optional(z.array(TargetAudienceSchema)),
   })
   .passthrough();
 
@@ -878,6 +910,11 @@ export const CallToolRequestSchema = RequestSchema.extend({
   params: BaseRequestParamsSchema.extend({
     name: z.string(),
     arguments: z.optional(z.record(z.unknown())),
+
+    /**
+     * An optional list of target audiences the result of this tool call should return.  (default: ["assistant"])
+     */
+    target: z.optional(z.array(TargetAudienceSchema)),
   }),
 });
 
