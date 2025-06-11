@@ -1,8 +1,9 @@
 import { z, ZodTypeAny } from "zod";
 
-export const LATEST_PROTOCOL_VERSION = "2024-11-05";
+export const LATEST_PROTOCOL_VERSION = "2025-03-26";
 export const SUPPORTED_PROTOCOL_VERSIONS = [
   LATEST_PROTOCOL_VERSION,
+  "2024-11-05",
   "2024-10-07",
 ];
 
@@ -19,18 +20,18 @@ export const ProgressTokenSchema = z.union([z.string(), z.number().int()]);
  */
 export const CursorSchema = z.string();
 
+const RequestMetaSchema = z
+  .object({
+    /**
+     * If specified, the caller is requesting out-of-band progress notifications for this request (as represented by notifications/progress). The value of this parameter is an opaque token that will be attached to any subsequent notifications. The receiver is not obligated to provide these notifications.
+     */
+    progressToken: z.optional(ProgressTokenSchema),
+  })
+  .passthrough();
+
 const BaseRequestParamsSchema = z
   .object({
-    _meta: z.optional(
-      z
-        .object({
-          /**
-           * If specified, the caller is requesting out-of-band progress notifications for this request (as represented by notifications/progress). The value of this parameter is an opaque token that will be attached to any subsequent notifications. The receiver is not obligated to provide these notifications.
-           */
-          progressToken: z.optional(ProgressTokenSchema),
-        })
-        .passthrough(),
-    ),
+    _meta: z.optional(RequestMetaSchema),
   })
   .passthrough();
 
@@ -363,6 +364,10 @@ export const ProgressSchema = z
      * Total number of items to process (or total progress required), if known.
      */
     total: z.optional(z.number()),
+    /**
+     * An optional message describing the current progress.
+     */
+    message: z.optional(z.string()),
   })
   .passthrough();
 
@@ -781,11 +786,11 @@ export const PromptListChangedNotificationSchema = NotificationSchema.extend({
 /* Tools */
 /**
  * Additional properties describing a Tool to clients.
- * 
- * NOTE: all properties in ToolAnnotations are **hints**. 
- * They are not guaranteed to provide a faithful description of 
+ *
+ * NOTE: all properties in ToolAnnotations are **hints**.
+ * They are not guaranteed to provide a faithful description of
  * tool behavior (including descriptive properties like `title`).
- * 
+ *
  * Clients should never make tool use decisions based on ToolAnnotations
  * received from untrusted servers.
  */
@@ -798,7 +803,7 @@ export const ToolAnnotationsSchema = z
 
     /**
      * If true, the tool does not modify its environment.
-     * 
+     *
      * Default: false
      */
     readOnlyHint: z.optional(z.boolean()),
@@ -806,19 +811,19 @@ export const ToolAnnotationsSchema = z
     /**
      * If true, the tool may perform destructive updates to its environment.
      * If false, the tool performs only additive updates.
-     * 
+     *
      * (This property is meaningful only when `readOnlyHint == false`)
-     * 
+     *
      * Default: true
      */
     destructiveHint: z.optional(z.boolean()),
 
     /**
-     * If true, calling the tool repeatedly with the same arguments 
+     * If true, calling the tool repeatedly with the same arguments
      * will have no additional effect on the its environment.
-     * 
+     *
      * (This property is meaningful only when `readOnlyHint == false`)
-     * 
+     *
      * Default: false
      */
     idempotentHint: z.optional(z.boolean()),
@@ -828,7 +833,7 @@ export const ToolAnnotationsSchema = z
      * entities. If false, the tool's domain of interaction is closed.
      * For example, the world of a web search tool is open, whereas that
      * of a memory tool is not.
-     * 
+     *
      * Default: true
      */
     openWorldHint: z.optional(z.boolean()),
@@ -855,8 +860,21 @@ export const ToolSchema = z
       .object({
         type: z.literal("object"),
         properties: z.optional(z.object({}).passthrough()),
+        required: z.optional(z.array(z.string())),
       })
       .passthrough(),
+    /**
+     * An optional JSON Schema object defining the structure of the tool's output returned in 
+     * the structuredContent field of a CallToolResult.
+     */
+    outputSchema: z.optional(
+      z.object({
+        type: z.literal("object"),
+        properties: z.optional(z.object({}).passthrough()),
+        required: z.optional(z.array(z.string())),
+      })
+      .passthrough()
+    ),
     /**
      * Optional additional tool information.
      */
@@ -887,10 +905,42 @@ export const ListToolsResultSchema = PaginatedResultSchema.extend({
  * The server's response to a tool call.
  */
 export const CallToolResultSchema = ResultSchema.extend({
+  /**
+   * A list of content objects that represent the result of the tool call.
+   *
+   * If the Tool does not define an outputSchema, this field MUST be present in the result.
+   * For backwards compatibility, this field is always present, but it may be empty.
+   */
   content: z.array(
-    z.union([TextContentSchema, ImageContentSchema, AudioContentSchema, EmbeddedResourceSchema]),
-  ),
-  isError: z.boolean().default(false).optional(),
+    z.union([
+      TextContentSchema,
+      ImageContentSchema,
+      AudioContentSchema,
+      EmbeddedResourceSchema,
+    ])).default([]),
+
+  /**
+   * An object containing structured tool output.
+   *
+   * If the Tool defines an outputSchema, this field MUST be present in the result, and contain a JSON object that matches the schema.
+   */
+  structuredContent: z.object({}).passthrough().optional(),
+
+  /**
+   * Whether the tool call ended in an error.
+   *
+   * If not set, this is assumed to be false (the call was successful).
+   *
+   * Any errors that originate from the tool SHOULD be reported inside the result
+   * object, with `isError` set to true, _not_ as an MCP protocol-level error
+   * response. Otherwise, the LLM would not be able to see that an error occurred
+   * and self-correct.
+   *
+   * However, any errors in _finding_ the tool, an error indicating that the
+   * server does not support tool calls, or any other exceptional conditions,
+   * should be reported as an MCP error response.
+   */
+  isError: z.optional(z.boolean()),
 });
 
 /**
@@ -1277,6 +1327,7 @@ type Infer<Schema extends ZodTypeAny> = Flatten<z.infer<Schema>>;
 export type ProgressToken = Infer<typeof ProgressTokenSchema>;
 export type Cursor = Infer<typeof CursorSchema>;
 export type Request = Infer<typeof RequestSchema>;
+export type RequestMeta = Infer<typeof RequestMetaSchema>;
 export type Notification = Infer<typeof NotificationSchema>;
 export type Result = Infer<typeof ResultSchema>;
 export type RequestId = Infer<typeof RequestIdSchema>;

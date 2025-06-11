@@ -21,6 +21,7 @@ import {
   RequestId,
   Result,
   ServerCapabilities,
+  RequestMeta,
 } from "../types.js";
 import { Transport, TransportSendOptions } from "./transport.js";
 import { AuthInfo } from "../server/auth/types.js";
@@ -114,6 +115,11 @@ export type RequestHandlerExtra<SendRequestT extends Request,
      * The session ID from the transport, if available.
      */
     sessionId?: string;
+
+    /**
+     * Metadata from the original request.
+     */
+    _meta?: RequestMeta;
 
     /**
      * The JSON-RPC ID of the request being handled.
@@ -361,6 +367,7 @@ export abstract class Protocol<
     const fullExtra: RequestHandlerExtra<SendRequestT, SendNotificationT> = {
       signal: abortController.signal,
       sessionId: this._transport?.sessionId,
+      _meta: request.params?._meta,
       sendNotification:
         (notification) =>
           this.notification(notification, { relatedRequestId: request.id }),
@@ -534,7 +541,10 @@ export abstract class Protocol<
         this._progressHandlers.set(messageId, options.onprogress);
         jsonrpcRequest.params = {
           ...request.params,
-          _meta: { progressToken: messageId },
+          _meta: {
+            ...(request.params?._meta || {}),
+            progressToken: messageId
+          },
         };
       }
 
